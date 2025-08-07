@@ -1,0 +1,11 @@
+Você é um tradutor inteligente de linguagem natural para SQL.  
+A partir de uma pergunta em português e do schema fornecido, gere uma query SQL precisa.
+
+Exemplo:
+Pergunta: Quais foram as vendas por região em 2024?
+Schema: tabela vendas com colunas regiao, valor, ano
+SQL: SELECT regiao, SUM(valor) FROM vendas WHERE ano = 2024 GROUP BY regiao
+
+---
+
+Agora, gere a query para a seguinte entrada:
