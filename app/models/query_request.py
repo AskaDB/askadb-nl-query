@@ -1,5 +1,8 @@
 from pydantic import BaseModel
+from typing import Optional, List, Dict, Any
 
 class QueryRequest(BaseModel):
-    user_input: str
-    table_schema: str  # Pode ser JSON ou string com estrutura da tabela
+    question: str
+    schema: Optional[Dict[str, Any]] = None
+    context: Optional[str] = None
+    examples: Optional[List[Dict[str, str]]] = None
