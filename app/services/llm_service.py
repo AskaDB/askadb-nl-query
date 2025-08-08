@@ -2,9 +2,6 @@ import os
 import json
 from typing import Dict, List, Any, Optional
 from openai import OpenAI
-from langchain.prompts import PromptTemplate
-from langchain.chains import LLMChain
-from langchain_openai import ChatOpenAI
 import logging
 
 logger = logging.getLogger(__name__)
@@ -100,77 +97,62 @@ SQL: SELECT product, SUM(quantity) as total_quantity FROM sales GROUP BY product
 
 Question: Qual foi o crescimento de vendas entre janeiro e fevereiro?
 SQL: SELECT 
-    SUM(CASE WHEN month = 'January' THEN sales_amount ELSE 0 END) as jan_sales,
-    SUM(CASE WHEN month = 'February' THEN sales_amount ELSE 0 END) as feb_sales,
-    ((SUM(CASE WHEN month = 'February' THEN sales_amount ELSE 0 END) - SUM(CASE WHEN month = 'January' THEN sales_amount ELSE 0 END)) / SUM(CASE WHEN month = 'January' THEN sales_amount ELSE 0 END) * 100) as growth_percentage
-FROM sales WHERE month IN ('January', 'February')
+    (SELECT SUM(sales_amount) FROM sales WHERE month = 'February') - 
+    (SELECT SUM(sales_amount) FROM sales WHERE month = 'January') as growth
 """
         
-        prompt = f"""
-You are an expert SQL query generator. Convert the natural language question to a SQL query.
+        prompt = f"""Given the following database schema:
 
-Database Schema:
 {schema_desc}
 
 {examples_text}
 
 Question: {question}
 
-Generate a SQL query that answers this question. Return only the SQL query, nothing else.
-"""
+Generate a SQL query that answers this question. Return only the SQL query, nothing else:"""
         
         return prompt
     
     def _format_schema(self, schema: Dict) -> str:
         """Format schema for prompt"""
-        schema_text = ""
+        schema_text = "Database Schema:\n"
         for table_name, table_info in schema.get("tables", {}).items():
-            schema_text += f"Table: {table_name}\n"
+            schema_text += f"\nTable: {table_name}\n"
             for col_name, col_info in table_info.get("columns", {}).items():
-                desc = col_info.get("description", "")
-                schema_text += f"  - {col_name} ({col_info['type']}): {desc}\n"
-            schema_text += "\n"
+                schema_text += f"  - {col_name} ({col_info.get('type', 'TEXT')}): {col_info.get('description', '')}\n"
         return schema_text
     
     def _generate_suggestions(self, question: str, schema: Dict) -> Dict[str, List[str]]:
         """Generate visualization and follow-up suggestions"""
         
-        # Simple rule-based suggestions
-        visualizations = []
-        follow_up_questions = []
-        
+        # Rule-based suggestions
         question_lower = question.lower()
         
         # Visualization suggestions
-        if "por região" in question_lower or "by region" in question_lower:
-            visualizations.extend(["bar_chart", "pie_chart", "map"])
-        if "por mês" in question_lower or "by month" in question_lower or "crescimento" in question_lower:
-            visualizations.extend(["line_chart", "area_chart"])
-        if "top" in question_lower or "ranking" in question_lower:
-            visualizations.extend(["bar_chart", "horizontal_bar"])
-        if "comparação" in question_lower or "comparison" in question_lower:
-            visualizations.extend(["bar_chart", "line_chart"])
-        
-        # Default visualization
-        if not visualizations:
-            visualizations = ["table", "bar_chart"]
+        visualizations = []
+        if any(word in question_lower for word in ['vendas', 'sales', 'amount', 'quantidade']):
+            if any(word in question_lower for word in ['região', 'region', 'produto', 'product']):
+                visualizations.append('bar_chart')
+            elif any(word in question_lower for word in ['tempo', 'time', 'mês', 'month']):
+                visualizations.append('line_chart')
+            else:
+                visualizations.append('pie_chart')
+        else:
+            visualizations.append('table')
         
         # Follow-up questions
-        if "vendas" in question_lower or "sales" in question_lower:
-            if "região" in question_lower or "region" in question_lower:
-                follow_up_questions.extend([
-                    "Quais produtos vendem melhor em cada região?",
-                    "Como as vendas variam por mês em cada região?",
-                    "Qual região tem o maior crescimento de vendas?"
-                ])
-            if "mês" in question_lower or "month" in question_lower:
-                follow_up_questions.extend([
-                    "Quais produtos tiveram melhor performance neste período?",
-                    "Como as vendas se comparam com o período anterior?",
-                    "Qual foi a tendência de crescimento?"
-                ])
+        follow_up_questions = []
+        if 'região' in question_lower or 'region' in question_lower:
+            follow_up_questions.append("Quais regiões tiveram melhor performance?")
+            follow_up_questions.append("Compare vendas por região e produto")
+        elif 'produto' in question_lower or 'product' in question_lower:
+            follow_up_questions.append("Qual produto teve maior crescimento?")
+            follow_up_questions.append("Mostre vendas por produto ao longo do tempo")
+        else:
+            follow_up_questions.append("Quero vendas por região no mês de maio")
+            follow_up_questions.append("Mostre os top 5 produtos por quantidade vendida")
         
         return {
-            "visualizations": visualizations[:3],  # Limit to 3 suggestions
-            "follow_up_questions": follow_up_questions[:3]  # Limit to 3 suggestions
+            "visualizations": visualizations,
+            "follow_up_questions": follow_up_questions
         }
